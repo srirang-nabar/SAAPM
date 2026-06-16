@@ -1,0 +1,726 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Presenter's Guide</title>
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['\\(', '\\)']],
+    displayMath: [['\\[', '\\]']],
+    macros: {
+      sb: ['_{#1}', 1],
+      S: '{\\unicode{x00A7}}'
+    }
+  },
+  options: { skipHtmlTags: ['script','noscript','style','textarea','pre','code'] }
+};
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js" id="MathJax-script" async></script>
+<script>
+// After MathJax typesets, shrink any display equation that is wider than the page.
+window.addEventListener('load', function () {
+  if (!window.MathJax || !MathJax.startup) return;
+  MathJax.startup.promise.then(function () {
+    document.querySelectorAll('mjx-container[display="true"]').forEach(function (c) {
+      var avail = c.clientWidth || c.parentElement.clientWidth;
+      var need = c.scrollWidth;
+      if (need > avail && avail > 0) {
+        var s = avail / need;
+        var inner = c.firstElementChild;
+        if (inner) {
+          inner.style.display = 'inline-block';
+          inner.style.transformOrigin = 'left center';
+          inner.style.transform = 'scale(' + s.toFixed(4) + ')';
+        }
+      }
+    });
+  });
+});
+</script>
+<style>
+  @page { size: A4; margin: 18mm 16mm; }
+  html { font-size: 10.5pt; }
+  body {
+    font-family: "Georgia", "Times New Roman", serif;
+    line-height: 1.5;
+    color: #1a1a1a;
+    max-width: 100%;
+  }
+  h1 { font-size: 1.9rem; line-height: 1.2; margin: 0 0 .2em; color: #11243f; }
+  h2 { font-size: 1.35rem; margin: 1.6em 0 .5em; padding-bottom: .15em;
+       border-bottom: 2px solid #c9d4e3; color: #11243f; page-break-after: avoid; }
+  h3 { font-size: 1.1rem; margin: 1.2em 0 .4em; color: #27425f; page-break-after: avoid; }
+  h1 + h2, h1 + h3 { border: none; }
+  p { margin: .55em 0; }
+  a { color: #1a4d8f; text-decoration: none; }
+  code, pre { font-family: "DejaVu Sans Mono", monospace; font-size: .85em; }
+  code { background: #f0f2f5; padding: .08em .3em; border-radius: 3px; }
+  pre { background: #f0f2f5; padding: .7em .9em; border-radius: 5px; overflow-x: auto; }
+  blockquote {
+    margin: .8em 0; padding: .5em 1em; background: #f5f8fc;
+    border-left: 4px solid #5b7ea6; color: #2c3e50; border-radius: 0 4px 4px 0;
+  }
+  table { border-collapse: collapse; width: 100%; margin: 1em 0; font-size: .9em;
+          page-break-inside: avoid; }
+  th, td { border: 1px solid #cbd5e0; padding: .4em .6em; text-align: left;
+           vertical-align: top; }
+  th { background: #11243f; color: #fff; font-family: "Helvetica", sans-serif;
+       font-size: .9em; }
+  tr:nth-child(even) td { background: #f5f8fc; }
+  hr { border: none; border-top: 1px solid #d6dde6; margin: 1.8em 0; }
+  strong { color: #11243f; }
+  mjx-container { overflow-x: auto; overflow-y: hidden; }
+  mjx-container[display="true"] { margin: .8em 0; }
+  ul, ol { margin: .5em 0; padding-left: 1.6em; }
+  li { margin: .25em 0; }
+  em { color: #444; }
+</style>
+</head>
+<body>
+<h1>Presenter's Guide</h1>
+<h2>Cointegration &amp; Error-Correction Dynamics in a Commodity-Currency Basket</h2>
+<h3>A VECM Approach to Relative-Value Currency Allocation</h3>
+<p><em>Companion to <code>fx_cointegration_vecm.ipynb</code>. This document explains the project end-to-end, fully specifies every statistical test (hypotheses, statistic, distribution, decision rule), gives the relevant mathematics, and lists the headline results so you can present and defend each step.</em></p>
+<hr />
+<h2>0. The 30-second pitch</h2>
+<blockquote>
+<p>We ask whether a basket of seven commodity / risk-sensitive currencies shares a <strong>stable long-run equilibrium</strong> (cointegration), and what the <strong>adjustment dynamics</strong> say about which currencies to hold. We build the <strong>full econometric pipeline</strong> — unit-root testing → lag selection → Johansen cointegration → VECM → out-of-sample walk-forward — and treat the <em>instability</em> of FX cointegration as the object of study rather than something to hide. The headline finding is honest: <strong>cointegration in this basket is regime-dependent</strong> — it exists in only ~15% of rolling windows — and while the equilibrium error shows statistically significant mean reversion, it <strong>does not beat a random walk</strong> out-of-sample. The grade lives in the rigour of the tests, not the size of the Sharpe.</p>
+</blockquote>
+<p><strong>One-sentence thesis to repeat:</strong> <em>the statistics are the deliverable; a negative or unstable result, properly tested, is a complete result.</em></p>
+<hr />
+<h2>1. The narrative arc (how the sections connect)</h2>
+<p>The analysis is a <strong>funnel</strong> — each test earns the right to run the next:</p>
+<div class="arithmatex">\[
+\underbrace{\text{Are the series } I(1)?}\sb{\text{\S 2}}\;\rightarrow\;
+\underbrace{\text{How many lags? Residuals clean?}}\sb{\text{\S 3}}\;\rightarrow\;
+\underbrace{\text{Which deterministic case?}}\sb{\text{\S 4}}\;\rightarrow\;
+\underbrace{\text{Cointegration rank } r}\sb{\text{\S 5–\S 6}}\;\rightarrow\;
+\underbrace{\text{VECM } \beta,\alpha}\sb{\text{\S 7–\S 9}}\;\rightarrow\;
+\underbrace{\text{Trading signal}}\sb{\text{\S 10}}\;\rightarrow\;
+\underbrace{\text{Walk-forward \&amp; evaluation}}\sb{\text{\S 11–\S 13}}
+\]</div>
+<p><strong>Crucial framing point to make early.</strong> The notebook does two kinds of work with two different correctness standards:</p>
+<table>
+<thead>
+<tr>
+<th>Regime</th>
+<th>Sections</th>
+<th>Claim type</th>
+<th>Standard</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>In-sample structural inference</strong></td>
+<td>§2–§9</td>
+<td><em>descriptive</em> ("were these cointegrated over 2016–26?")</td>
+<td>full sample is legitimate — no forecast is made</td>
+</tr>
+<tr>
+<td><strong>Out-of-sample evaluation</strong></td>
+<td>§11–§13</td>
+<td><em>predictive</em> ("could you have traded it?")</td>
+<td>strictly causal — any quantity used at time <span class="arithmatex">\(t\)</span> uses only data <span class="arithmatex">\(\le t\)</span></td>
+</tr>
+</tbody>
+</table>
+<p>This distinction pre-empts the "isn't that look-ahead bias?" question.</p>
+<hr />
+<h2>2. The data</h2>
+<ul>
+<li><strong>Source:</strong> Bloomberg terminal pull (<code>src/fx_data_pull.py</code>), daily <code>PX_LAST</code>, ~2,600 trading days, 2016–2026.</li>
+<li><strong>Basket (commodity / risk bloc):</strong> <strong>AUD, NZD, CAD, NOK, SEK, ZAR, MXN</strong>.</li>
+<li><strong>Transform:</strong> every series is quoted as <strong>USD per 1 unit of the currency</strong> (USD-quoted pairs inverted), then <strong>logged</strong>. We model <span class="arithmatex">\(y_t = \log(\text{price})\)</span>.</li>
+</ul>
+<p><strong>Why these choices matter (say this):</strong>
+- <em>Common numéraire + logs</em> make the log-levels directly comparable, so a cross-currency cointegrating vector <span class="arithmatex">\(\beta'y_t\)</span> is meaningful and its weights are interpretable as elasticities.
+- <em>Thematic tightness is statistical, not cosmetic.</em> A grab-bag basket tends to produce "cointegration" that is just <strong>shared USD exposure</strong> (the common-dollar-factor trap, tested in §8). Seven series also keeps Johansen's test powerful — it degrades badly past ~10–12 series.
+- <em>Survivorship:</em> the basket was chosen <strong>ex-ante on economic theme</strong>, not by screening for what cointegrates, so we are not data-snooping the basket.</p>
+<hr />
+<h2>3. Foundational mathematics (define these once)</h2>
+<p><strong>Integration order.</strong> A series <span class="arithmatex">\(y_t\)</span> is <strong>integrated of order <span class="arithmatex">\(d\)</span></strong>, written <span class="arithmatex">\(y_t \sim I(d)\)</span>, if it must be differenced <span class="arithmatex">\(d\)</span> times to become stationary. A unit-root (random-walk) series <span class="arithmatex">\(y_t = y_{t-1} + \varepsilon_t\)</span> is <span class="arithmatex">\(I(1)\)</span>: non-stationary, but its first difference <span class="arithmatex">\(\Delta y_t = \varepsilon_t\)</span> is stationary <span class="arithmatex">\(I(0)\)</span>.</p>
+<p><strong>Cointegration (Engle–Granger 1987).</strong> A vector of <span class="arithmatex">\(I(1)\)</span> series <span class="arithmatex">\(y_t \in \mathbb{R}^n\)</span> is <strong>cointegrated</strong> if there exists a vector <span class="arithmatex">\(\beta \neq 0\)</span> such that the linear combination</p>
+<div class="arithmatex">\[
+z_t = \beta' y_t \sim I(0)
+\]</div>
+<p>is <strong>stationary</strong>. Economically: the series individually wander (non-stationary), but a particular weighted combination is tied together — a <strong>long-run equilibrium</strong> — and deviations from it are temporary. The number of independent such vectors is the <strong>cointegration rank</strong> <span class="arithmatex">\(r\)</span>.</p>
+<p><strong>Why we care:</strong> if <span class="arithmatex">\(z_t\)</span> is stationary it is mean-reverting, so a stretched <span class="arithmatex">\(z_t\)</span> predicts a partial reversion → a tradeable "which currency is cheap/rich" signal.</p>
+<hr />
+<h2>4. §2 — Order-of-integration tests (is each series <span class="arithmatex">\(I(1)\)</span>?)</h2>
+<p><strong>Why first:</strong> cointegration is only defined for series integrated of the <strong>same</strong> order, conventionally <span class="arithmatex">\(I(1)\)</span>. If a series were <span class="arithmatex">\(I(0)\)</span> it cannot belong to a cointegrating relation; if <span class="arithmatex">\(I(2)\)</span> the standard Johansen setup is invalid. So we must pin the integration order before anything else.</p>
+<p>We test each <strong>log level</strong> and each <strong>first difference</strong> with a battery. Use a <em>confirmatory pair</em> (opposite nulls) plus power- and break-robust variants.</p>
+<h3>4.1 Augmented Dickey–Fuller (ADF) — the workhorse</h3>
+<p>Regression:</p>
+<div class="arithmatex">\[
+\Delta y_t = \mu + \delta t + \rho\, y_{t-1} + \sum_{i=1}^{p}\gamma_i \Delta y_{t-i} + \varepsilon_t
+\]</div>
+<p>The lagged differences "augment" the regression to whiten <span class="arithmatex">\(\varepsilon_t\)</span>.</p>
+<ul>
+<li><strong><span class="arithmatex">\(H_0\)</span>:</strong> <span class="arithmatex">\(\rho = 0\)</span> — a <strong>unit root</strong> is present (<span class="arithmatex">\(y_t\)</span> is non-stationary, <span class="arithmatex">\(I(1)\)</span>).</li>
+<li><strong><span class="arithmatex">\(H_1\)</span>:</strong> <span class="arithmatex">\(\rho &lt; 0\)</span> — <span class="arithmatex">\(y_t\)</span> is (trend-)stationary, <span class="arithmatex">\(I(0)\)</span>.</li>
+<li><strong>Statistic:</strong> <span class="arithmatex">\(\mathrm{ADF} = \hat\rho / \mathrm{se}(\hat\rho)\)</span> — a <span class="arithmatex">\(t\)</span>-ratio, but it does <strong>not</strong> follow a <span class="arithmatex">\(t\)</span>-distribution under <span class="arithmatex">\(H_0\)</span>; it follows the non-standard <strong>Dickey–Fuller distribution</strong> (left-tailed, more negative critical values).</li>
+<li><strong>Decision:</strong> reject <span class="arithmatex">\(H_0\)</span> (conclude stationary) if <span class="arithmatex">\(\mathrm{ADF}\)</span> is <strong>more negative</strong> than the critical value / if <span class="arithmatex">\(p &lt; 0.05\)</span>.</li>
+</ul>
+<h3>4.2 KPSS — the complementary test (opposite null)</h3>
+<p>Based on the partial-sum process of residuals <span class="arithmatex">\(S_t = \sum_{i=1}^{t}\hat u_i\)</span>:</p>
+<div class="arithmatex">\[
+\mathrm{KPSS} = \frac{1}{T^2}\sum_{t=1}^{T} \frac{S_t^2}{\hat\sigma^2_{LR}}
+\]</div>
+<p>where <span class="arithmatex">\(\hat\sigma^2_{LR}\)</span> is a HAC long-run variance estimate.</p>
+<ul>
+<li><strong><span class="arithmatex">\(H_0\)</span>:</strong> <span class="arithmatex">\(y_t\)</span> is <strong>stationary</strong> (note: the <em>reverse</em> of ADF).</li>
+<li><strong><span class="arithmatex">\(H_1\)</span>:</strong> <span class="arithmatex">\(y_t\)</span> has a unit root.</li>
+<li><strong>Decision:</strong> reject <span class="arithmatex">\(H_0\)</span> (conclude non-stationary) if <span class="arithmatex">\(\mathrm{KPSS}\)</span> exceeds its critical value / <span class="arithmatex">\(p &lt; 0.05\)</span>.</li>
+</ul>
+<blockquote>
+<p><strong>Why use both ADF and KPSS:</strong> ADF has notoriously low power (it often fails to reject even for stationary series). Pairing it with KPSS's opposite null gives a <strong>confirmatory</strong> read. We want, on the <strong>levels</strong>: ADF <em>fails to reject</em> <strong>and</strong> KPSS <em>rejects</em> → both point to non-stationary → confident <span class="arithmatex">\(I(1)\)</span>. On the <strong>differences</strong> the pattern flips.</p>
+</blockquote>
+<h3>4.3 DF-GLS (Elliott–Rothenberg–Stock) — higher power</h3>
+<p>Same null/alternative as ADF, but the data are <strong>GLS-detrended</strong> before the ADF regression, which yields substantially <strong>greater power</strong> near the unit-root boundary. Include it because ADF alone is weak.</p>
+<h3>4.4 Phillips–Perron (PP) — robust to heteroskedasticity</h3>
+<p>Same <span class="arithmatex">\(H_0\)</span> (unit root) as ADF, but instead of adding lagged differences it applies a <strong>non-parametric HAC correction</strong> to the test statistic. Apt for FX, where volatility clustering violates the i.i.d.-error assumption.</p>
+<h3>4.5 Zivot–Andrews — break-robust unit root</h3>
+<ul>
+<li><strong><span class="arithmatex">\(H_0\)</span>:</strong> unit root <strong>with no structural break</strong>.</li>
+<li><strong><span class="arithmatex">\(H_1\)</span>:</strong> stationary <strong>around one endogenously-chosen break</strong> in level/trend.</li>
+<li>The break date is chosen to be <strong>maximally favourable to rejecting</strong> <span class="arithmatex">\(H_0\)</span> (minimises the ADF <span class="arithmatex">\(t\)</span>-stat over all candidate break points).</li>
+</ul>
+<blockquote>
+<p><strong>Why this is essential (a high-mark point):</strong> an unmodelled structural break makes a <em>stationary</em> series look like a unit root (Perron 1989). We <em>expect</em> breaks (COVID, the 2022 hiking cycle — dated in §11), so an <span class="arithmatex">\(I(1)\)</span> verdict from plain ADF alone would be self-contradictory. Zivot–Andrews closes that hole.</p>
+</blockquote>
+<h3>4.6 Critical-values note (remember this — it returns in §6, reversed)</h3>
+<p>Here the series are <strong>directly observed</strong>, so the <strong>standard Dickey–Fuller critical values are correct</strong>. This is <em>deliberately different</em> from §6, where we test the <em>estimated residual</em> of a cointegrating regression and must use <strong>stricter</strong> critical values.</p>
+<h3>4.7 What we found</h3>
+<ul>
+<li><strong>Levels:</strong> unit-root nulls (ADF/DF-GLS/PP/ZA) generally <strong>not rejected</strong>; KPSS <strong>rejects</strong> stationarity (<span class="arithmatex">\(p\approx0\)</span>) for all seven. → <strong><span class="arithmatex">\(I(1)\)</span>.</strong></li>
+<li><strong>Differences:</strong> ADF/DF-GLS/PP all <span class="arithmatex">\(p\approx0.000\)</span> → stationary → <strong>confirms <span class="arithmatex">\(I(1)\)</span>, rules out <span class="arithmatex">\(I(2)\)</span>.</strong></li>
+<li>Two minor cross-test disagreements (MXN DF-GLS <span class="arithmatex">\(p=0.014\)</span>; NZD Zivot–Andrews <span class="arithmatex">\(p=0.019\)</span>) are expected when running five tests; the <strong>preponderance</strong> says <span class="arithmatex">\(I(1)\)</span>, and the notebook flags them honestly.</li>
+</ul>
+<hr />
+<h2>5. §3 — Lag selection and the residual-whiteness gate</h2>
+<p>Johansen rests on an underlying VAR(<span class="arithmatex">\(p\)</span>) in levels:</p>
+<div class="arithmatex">\[
+y_t = \nu + \sum_{i=1}^{p} A_i y_{t-i} + \varepsilon_t .
+\]</div>
+<h3>5.1 Information criteria</h3>
+<p>Choose <span class="arithmatex">\(p\)</span> to minimise an information criterion, each trading fit against parameter count <span class="arithmatex">\(k=pn^2\)</span>:</p>
+<div class="arithmatex">\[
+\mathrm{AIC} = \ln|\hat\Sigma| + \frac{2k}{T}, \qquad
+\mathrm{BIC} = \ln|\hat\Sigma| + \frac{k\ln T}{T}, \qquad
+\mathrm{HQIC} = \ln|\hat\Sigma| + \frac{2k\ln\ln T}{T}.
+\]</div>
+<p>The VECM lag in <strong>differences</strong> is <span class="arithmatex">\(k_{\text{ar diff}} = p - 1\)</span>.</p>
+<ul>
+<li><strong>Our choice:</strong> <strong>AIC, floored at <span class="arithmatex">\(p=2\)</span></strong> (so <span class="arithmatex">\(k_{\text{ar diff}}=1\)</span>). <em>Why AIC, not BIC?</em> For cointegration the consistent criteria (BIC/HQIC) tend to <strong>under-select</strong> short-run dynamics, leaving residual autocorrelation that <strong>biases the trace test</strong>. Result: AIC <span class="arithmatex">\(=2\)</span>, BIC/HQIC <span class="arithmatex">\(=1\)</span>.</li>
+</ul>
+<h3>5.2 Portmanteau / Ljung–Box whiteness test (the gate)</h3>
+<ul>
+<li><strong><span class="arithmatex">\(H_0\)</span>:</strong> VAR residuals are <strong>white</strong> (no autocorrelation up to lag <span class="arithmatex">\(h\)</span>).</li>
+<li><strong>Statistic (multivariate, adjusted):</strong> <span class="arithmatex">\(Q_h = T^2\sum_{j=1}^{h}(T-j)^{-1}\operatorname{tr}(\hat C_j' \hat C_0^{-1}\hat C_j \hat C_0^{-1}) \sim \chi^2\)</span>, where <span class="arithmatex">\(\hat C_j\)</span> is the residual autocovariance at lag <span class="arithmatex">\(j\)</span>.</li>
+<li><strong>Why it is a <em>gate</em>:</strong> the trace test's asymptotic distribution assumes serially-uncorrelated errors, so whiteness is a <strong>precondition</strong>, not an afterthought.</li>
+</ul>
+<h3>5.3 What we found — and how to present the "failure"</h3>
+<p>The whiteness test <strong>rejects</strong> (<span class="arithmatex">\(p \approx 0\)</span>). <strong>Do not be defensive about this — own it:</strong></p>
+<blockquote>
+<p>At <strong>daily</strong> frequency strict whiteness is essentially unattainable: the portmanteau statistic also absorbs <strong>ARCH / volatility clustering</strong>, which no lag length removes. Adding lags would chase conditional heteroskedasticity, not mean dynamics, and merely over-parameterise the system. We therefore keep the AIC order and obtain valid rank inference from the <strong>heteroskedasticity-robust wild bootstrap in §5</strong>, rather than the asymptotic test alone.</p>
+</blockquote>
+<p>This turns a nuisance into a rigour point — it <em>motivates</em> the bootstrap.</p>
+<hr />
+<h2>6. §4 — Deterministic specification (which of Johansen's 5 cases)</h2>
+<p>Writing the VECM with deterministics split between the levels and the cointegrating relation:</p>
+<div class="arithmatex">\[
+\Delta y_t = \alpha\bigl(\beta' y_{t-1} + \rho_0 + \rho_1 t\bigr) + \gamma_0 + \gamma_1 t + \sum_{i=1}^{k}\Gamma_i \Delta y_{t-i} + \varepsilon_t .
+\]</div>
+<table>
+<thead>
+<tr>
+<th>Case</th>
+<th>Levels</th>
+<th>Coint. relation</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>–</td>
+<td>–</td>
+<td>no deterministics</td>
+</tr>
+<tr>
+<td>2</td>
+<td>–</td>
+<td>constant <span class="arithmatex">\(\rho_0\)</span></td>
+<td>equilibrium has non-zero mean; <strong>no trend in levels</strong></td>
+</tr>
+<tr>
+<td><strong>3</strong></td>
+<td><strong>constant <span class="arithmatex">\(\gamma_0\)</span></strong></td>
+<td>constant</td>
+<td><strong>linear trend allowed in levels</strong> (<code>'co'</code>)</td>
+</tr>
+<tr>
+<td>4</td>
+<td>constant</td>
+<td>+ trend <span class="arithmatex">\(\rho_1\)</span></td>
+<td>trend-stationary equilibrium</td>
+</tr>
+<tr>
+<td>5</td>
+<td>trend</td>
+<td>+ trend</td>
+<td>quadratic trends</td>
+</tr>
+</tbody>
+</table>
+<p><strong>The choice changes the critical values</strong>, so it is substantive.</p>
+<ul>
+<li><strong>Our choice — Case 3 (unrestricted constant, <code>deterministic='co'</code>).</strong> §1 shows EM currencies (ZAR, MXN, NOK) <strong>drift persistently</strong> vs USD. We confirm with a regression <span class="arithmatex">\(y_t = a + bt\)</span>: HAC <span class="arithmatex">\(t\)</span>-stats on the slope are <strong>huge</strong> (e.g. NZD <span class="arithmatex">\(t=-27\)</span>, NOK/ZAR <span class="arithmatex">\(t\approx-15\)</span>) → a real deterministic trend the model must accommodate → unrestricted constant. Case 2 is run as a robustness check.</li>
+</ul>
+<hr />
+<h2>7. §5 — The Johansen cointegration test (the core inference)</h2>
+<h3>7.1 From VAR to VECM</h3>
+<p>Re-parameterise the VAR(<span class="arithmatex">\(p\)</span>) as the <strong>Vector Error-Correction Model</strong>:</p>
+<div class="arithmatex">\[
+\Delta y_t = \Pi y_{t-1} + \sum_{i=1}^{k}\Gamma_i \Delta y_{t-i} + (\text{determ.}) + \varepsilon_t,
+\qquad \Pi = \alpha\beta' .
+\]</div>
+<ul>
+<li><span class="arithmatex">\(\Pi\)</span> is the <strong>long-run impact matrix</strong>. Its <strong>rank</strong> is the cointegration rank: <span class="arithmatex">\(r = \operatorname{rank}(\Pi)\)</span>.</li>
+<li>If <span class="arithmatex">\(r=0\)</span>: no cointegration (<span class="arithmatex">\(\Pi=0\)</span>, a VAR in differences). If <span class="arithmatex">\(r=n\)</span>: the system is stationary in levels. If <span class="arithmatex">\(0&lt;r&lt;n\)</span>: <strong><span class="arithmatex">\(r\)</span> cointegrating relations</strong>, with</li>
+<li><span class="arithmatex">\(\beta\)</span> (<span class="arithmatex">\(n\times r\)</span>): the <strong>cointegrating vectors</strong> (the equilibria),</li>
+<li><span class="arithmatex">\(\alpha\)</span> (<span class="arithmatex">\(n\times r\)</span>): the <strong>adjustment / loading matrix</strong> (speeds of return to equilibrium).</li>
+</ul>
+<h3>7.2 Reduced-rank regression &amp; eigenvalues</h3>
+<p>Johansen's MLE concentrates out the short-run terms and solves a generalised eigenvalue problem on the residual moment matrices <span class="arithmatex">\(S_{ij}\)</span> (from regressing <span class="arithmatex">\(\Delta y_t\)</span> and <span class="arithmatex">\(y_{t-1}\)</span> on the lagged differences):</p>
+<div class="arithmatex">\[
+\bigl|\,\lambda S_{11} - S_{10} S_{00}^{-1} S_{01}\,\bigr| = 0
+\;\Rightarrow\; \hat\lambda_1 &gt; \hat\lambda_2 &gt; \dots &gt; \hat\lambda_n .
+\]</div>
+<p>Each <span class="arithmatex">\(\hat\lambda_i\)</span> is a <strong>squared canonical correlation</strong> between levels and differences; a large <span class="arithmatex">\(\hat\lambda_i\)</span> signals a stationary (mean-reverting) direction.</p>
+<h3>7.3 The two rank tests</h3>
+<p><strong>Trace test</strong> — tests rank <span class="arithmatex">\(\le r\)</span> against rank <span class="arithmatex">\(&gt; r\)</span>:</p>
+<div class="arithmatex">\[
+\mathrm{LR}_{\text{trace}}(r) = -T\sum_{i=r+1}^{n}\ln\bigl(1-\hat\lambda_i\bigr).
+\]</div>
+<ul>
+<li><strong><span class="arithmatex">\(H_0\)</span>:</strong> at most <span class="arithmatex">\(r\)</span> cointegrating relations. <strong><span class="arithmatex">\(H_1\)</span>:</strong> more than <span class="arithmatex">\(r\)</span>.</li>
+<li>Procedure: start at <span class="arithmatex">\(r=0\)</span>; if rejected, try <span class="arithmatex">\(r=1\)</span>, … stop at the first <strong>non-rejection</strong>.</li>
+</ul>
+<p><strong>Maximum-eigenvalue test</strong> — tests rank <span class="arithmatex">\(=r\)</span> against rank <span class="arithmatex">\(=r+1\)</span>:</p>
+<div class="arithmatex">\[
+\mathrm{LR}_{\max}(r) = -T\ln\bigl(1-\hat\lambda_{r+1}\bigr).
+\]</div>
+<ul>
+<li>Sharper (isolates one eigenvalue); can disagree with trace. <strong>We report both and reconcile them.</strong></li>
+</ul>
+<p>Both have <strong>non-standard</strong> asymptotic distributions (functionals of Brownian motion) that depend on <span class="arithmatex">\(n-r\)</span> and the deterministic case; critical values come from MacKinnon–Haug–Michelis tables (bundled in <code>statsmodels</code>).</p>
+<h3>7.4 Two robustness layers (these are what elevate the section)</h3>
+<p><strong>(a) Reinsel–Ahn finite-sample correction.</strong> The trace test <strong>over-rejects</strong> in finite samples. Replace <span class="arithmatex">\(T\)</span> by the effective sample <span class="arithmatex">\(T-nk\)</span>:</p>
+<div class="arithmatex">\[
+\mathrm{LR}^{*}_{\text{trace}}(r) = -(T-nk)\sum_{i&gt;r}\ln(1-\hat\lambda_i).
+\]</div>
+<p><strong>(b) Wild bootstrap (Cavaliere–Rahbek–Taylor).</strong> Asymptotic critical values assume homoskedastic Gaussian errors; FX has heavy volatility clustering that inflates the trace statistic. Algorithm for testing <span class="arithmatex">\(H_0: r=0\)</span>:
+1. Estimate the restricted model under <span class="arithmatex">\(H_0\)</span> (a VAR in differences); keep residuals <span class="arithmatex">\(\hat\varepsilon_t\)</span>.
+2. Generate <strong>Rademacher wild draws</strong> <span class="arithmatex">\(w_t\in\{-1,+1\}\)</span> and build <span class="arithmatex">\(\varepsilon^*_t = w_t\hat\varepsilon_t\)</span> — this <strong>preserves the conditional heteroskedasticity</strong> pattern.
+3. Recursively rebuild a bootstrap series <span class="arithmatex">\(y^*_t\)</span> and recompute <span class="arithmatex">\(\mathrm{LR}_{\text{trace}}(0)\)</span>.
+4. Repeat <span class="arithmatex">\(B\)</span> times; bootstrap <span class="arithmatex">\(p\)</span>-value <span class="arithmatex">\(= \dfrac{\#\{\mathrm{LR}^*\ge \mathrm{LR}^{\text{obs}}\}+1}{B+1}\)</span>.</p>
+<p><em>(The notebook's from-scratch reduced-rank routine is validated to match <code>statsmodels.coint_johansen</code> to the decimal, and supplies the <span class="arithmatex">\(S_{ij}\)</span> matrices reused in §8.)</em></p>
+<h3>7.5 What we found — the headline</h3>
+<table>
+<thead>
+<tr>
+<th>Quantity</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Trace rank @95%</td>
+<td><strong>0</strong></td>
+</tr>
+<tr>
+<td>Finite-sample-corrected trace rank</td>
+<td><strong>0</strong></td>
+</tr>
+<tr>
+<td>Max-eigenvalue rank @95%</td>
+<td><strong>0</strong></td>
+</tr>
+<tr>
+<td>Observed <span class="arithmatex">\(\mathrm{LR}_{\text{trace}}(0)\)</span></td>
+<td>115.58</td>
+</tr>
+<tr>
+<td>Asymptotic 95% crit. value</td>
+<td>125.62</td>
+</tr>
+<tr>
+<td><strong>Bootstrap 95% crit. value</strong></td>
+<td><strong>135.62</strong></td>
+</tr>
+<tr>
+<td><strong>Bootstrap <span class="arithmatex">\(p\)</span>-value</strong></td>
+<td><strong>0.345</strong></td>
+</tr>
+</tbody>
+</table>
+<p><strong>How to present this beautifully:</strong> the bootstrap critical value (135.6) sits <strong>above</strong> the asymptotic one (125.6) — <em>exactly</em> the direction theory predicts when errors are heteroskedastic (the asymptotic test over-rejects). All four routes agree: <strong>no cointegration in the full 2016–26 sample.</strong> This is not a failure — it is the FX-instability thesis, confirmed by convergent, robust tests.</p>
+<hr />
+<h2>8. §6 — Cross-validating cointegration (a second method)</h2>
+<p>Relying on one test is fragile; we confirm with <strong>residual-based</strong> tests and re-estimate <span class="arithmatex">\(\beta\)</span> two more ways.</p>
+<h3>8.1 Engle–Granger &amp; Phillips–Ouliaris</h3>
+<p>Regress one currency on the others, <span class="arithmatex">\(y_{1t} = \theta' y_{-1,t} + u_t\)</span>, and test the residual <span class="arithmatex">\(\hat u_t\)</span> for a unit root.
+- <strong><span class="arithmatex">\(H_0\)</span>:</strong> <span class="arithmatex">\(\hat u_t\)</span> has a unit root → <strong>no cointegration</strong>. <strong><span class="arithmatex">\(H_1\)</span>:</strong> <span class="arithmatex">\(\hat u_t\)</span> stationary → cointegration.
+- <strong>Engle–Granger</strong> uses an ADF on <span class="arithmatex">\(\hat u_t\)</span>; <strong>Phillips–Ouliaris</strong> uses a PP-type (HAC) statistic on <span class="arithmatex">\(\hat u_t\)</span>.</p>
+<blockquote>
+<p><strong>The critical-values point (the §2 caveat, now <em>reversed</em>):</strong> because <span class="arithmatex">\(\hat u_t\)</span> is the residual of an <strong>estimated</strong> regression whose coefficients were chosen to <em>minimise its variance</em>, <span class="arithmatex">\(\hat u_t\)</span> is biased toward looking stationary. So we <strong>must use the stricter, <span class="arithmatex">\(N\)</span>-dependent Engle–Granger / Phillips–Ouliaris critical values</strong> (more regressors ⇒ more stringent). <code>arch</code> applies these automatically; feeding <span class="arithmatex">\(\hat u_t\)</span> into a plain ADF would silently use too-lenient values and <strong>over-detect</strong> cointegration. Make this point explicitly — it shows you understand <em>why</em> there are two sets of critical values.</p>
+</blockquote>
+<h3>8.2 DOLS (Stock–Watson) and the Johansen <span class="arithmatex">\(\beta\)</span></h3>
+<p>Re-estimate the long-run vector with valid standard errors (DOLS adds leads and lags of <span class="arithmatex">\(\Delta y\)</span> to correct for endogeneity). <strong>Convergent <span class="arithmatex">\(\beta\)</span> across Johansen / DOLS is strong evidence; divergence is itself a finding.</strong></p>
+<h3>8.3 What we found</h3>
+<p>Engle–Granger <span class="arithmatex">\(p=0.61\)</span>, Phillips–Ouliaris <span class="arithmatex">\(p=0.69\)</span> → <strong>no cointegration</strong>, independently confirming Johansen. (Long-run vectors are shown for comparison but flagged as economically meaningful only if <span class="arithmatex">\(r\ge1\)</span>.)</p>
+<hr />
+<h2>9. §7 — VECM estimation &amp; diagnostics</h2>
+<p>Fit the VECM at the chosen rank:</p>
+<div class="arithmatex">\[
+\Delta y_t = \underbrace{\alpha}_{\text{adjustment}}\underbrace{\beta'}_{\text{equilibria}} y_{t-1} + \sum_{i=1}^{k}\Gamma_i\Delta y_{t-i} + (\text{determ.}) + \varepsilon_t .
+\]</div>
+<ul>
+<li><span class="arithmatex">\(\beta\)</span> — long-run equilibrium combinations.</li>
+<li><span class="arithmatex">\(\alpha\)</span> — how fast each currency is pulled back to equilibrium (the "which to hold" engine, §9).</li>
+</ul>
+<p><strong>Three checks — "a model we have not checked is a model we cannot trust":</strong>
+1. <strong>Stationarity of the error-correction term <span class="arithmatex">\(\hat\beta'y_t\)</span></strong> (ADF/KPSS) — directly verifies the cointegrating combination is <span class="arithmatex">\(I(0)\)</span>, closing the loop. <em>Flagged as indicative only</em>, because <span class="arithmatex">\(\beta\)</span> is estimated (the §6 caveat); formal evidence is the §6 properly-valued tests.
+2. <strong>Companion-matrix stability</strong> — the VAR companion form must have exactly <span class="arithmatex">\(n-r\)</span> unit roots and all other eigenvalue moduli <span class="arithmatex">\(&lt;1\)</span>.
+3. <strong>Residual whiteness / normality</strong> on the fitted VECM.</p>
+<blockquote>
+<p><em>Presenter note:</em> since the full-sample rank is 0, the notebook sets rank <span class="arithmatex">\(=1\)</span> <strong>only to demonstrate the estimation/diagnostics machinery</strong>; the honest rank verdict (0) stands. Say this plainly.</p>
+</blockquote>
+<hr />
+<h2>10. §8 — Testing the common-dollar-factor trap (an LR test)</h2>
+<p><strong>The risk:</strong> because every series is vs USD, a "cointegrating relation" might just be <strong>shared dollar exposure</strong>. The purest dollar relation is the <strong>equal-weight direction</strong> <span class="arithmatex">\(b=(1,\dots,1)'\)</span>. We test whether the estimated cointegrating space is statistically consistent with that direction.</p>
+<p>For rank <span class="arithmatex">\(r=1\)</span>, restricting <span class="arithmatex">\(\beta\)</span> to a known vector <span class="arithmatex">\(b\)</span> gives the restricted squared canonical correlation and a <strong>likelihood-ratio statistic</strong>:</p>
+<div class="arithmatex">\[
+\lambda^{*} = \frac{b' S_{10} S_{00}^{-1} S_{01}\, b}{b' S_{11}\, b},
+\qquad
+\mathrm{LR} = T\,\ln\!\frac{1-\lambda^{*}}{1-\hat\lambda_1} \;\sim\; \chi^2_{\,n-1}.
+\]</div>
+<ul>
+<li><strong><span class="arithmatex">\(H_0\)</span>:</strong> the cointegrating vector <strong>equals</strong> the dollar direction <span class="arithmatex">\(b=(1,\dots,1)'\)</span> → the relation is a pure dollar factor (untradeable as relative value).</li>
+<li><strong><span class="arithmatex">\(H_1\)</span>:</strong> <span class="arithmatex">\(\beta \neq b\)</span> → a genuine cross-currency relationship.</li>
+<li><strong>Decision:</strong> small <span class="arithmatex">\(p\)</span> ⇒ <strong>reject</strong> ⇒ <em>not</em> a dollar factor.</li>
+</ul>
+<p><strong>What we found:</strong> <span class="arithmatex">\(\hat\lambda_1 = 0.0146\)</span>, <span class="arithmatex">\(\lambda^* = 0.0047\)</span>, <span class="arithmatex">\(\mathrm{LR} = 26.07\)</span>, <span class="arithmatex">\(\chi^2_6\)</span> <span class="arithmatex">\(p = 0.0002\)</span> → <strong>reject <span class="arithmatex">\(H_0\)</span></strong>: the dominant direction is <strong>statistically distinguishable from a pure dollar factor</strong>. (We tested the worry rather than merely asserting it — an A-vs-B+ move.)</p>
+<hr />
+<h2>11. §9 — Structural interpretation: <em>which currencies to hold</em></h2>
+<h3>11.1 Weak exogeneity (anchors vs adjusters)</h3>
+<p>A currency whose loading <span class="arithmatex">\(\alpha_j \approx 0\)</span> does <strong>not</strong> error-correct — it <strong>pushes</strong> the system but is not pulled back: a long-run <strong>anchor / driver</strong>. Large, significant <span class="arithmatex">\(\alpha_j\)</span> ⇒ an <strong>adjuster</strong> that reverts toward the basket.
+- <strong><span class="arithmatex">\(H_0\)</span>:</strong> <span class="arithmatex">\(\alpha_j = 0\)</span> (currency <span class="arithmatex">\(j\)</span> is <strong>weakly exogenous</strong>). Formally an LR test; we report the asymptotically-equivalent <span class="arithmatex">\(t\)</span>-tests on each <span class="arithmatex">\(\alpha_j\)</span>.
+- <strong>Decision:</strong> reject (<span class="arithmatex">\(p&lt;0.05\)</span>) ⇒ adjuster; fail to reject ⇒ anchor.</p>
+<p><strong>What we found (the holding answer):</strong></p>
+<table>
+<thead>
+<tr>
+<th>Currency</th>
+<th><span class="arithmatex">\(\alpha\)</span></th>
+<th><span class="arithmatex">\(t\)</span></th>
+<th><span class="arithmatex">\(p\)</span></th>
+<th>Role</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>AUD</td>
+<td>−0.0013</td>
+<td>−2.07</td>
+<td>0.038</td>
+<td><strong>Adjuster</strong></td>
+</tr>
+<tr>
+<td>NZD</td>
+<td>−0.0013</td>
+<td>−2.08</td>
+<td>0.038</td>
+<td><strong>Adjuster</strong></td>
+</tr>
+<tr>
+<td>CAD</td>
+<td>−0.0006</td>
+<td>−1.34</td>
+<td>0.179</td>
+<td>Anchor</td>
+</tr>
+<tr>
+<td>NOK</td>
+<td>−0.0026</td>
+<td>−3.55</td>
+<td>0.000</td>
+<td><strong>Adjuster</strong></td>
+</tr>
+<tr>
+<td>SEK</td>
+<td>−0.0023</td>
+<td>−3.60</td>
+<td>0.000</td>
+<td><strong>Adjuster</strong></td>
+</tr>
+<tr>
+<td>ZAR</td>
+<td>+0.0018</td>
+<td>1.92</td>
+<td>0.055</td>
+<td>Anchor</td>
+</tr>
+<tr>
+<td>MXN</td>
+<td>−0.0001</td>
+<td>−0.18</td>
+<td>0.858</td>
+<td>Anchor</td>
+</tr>
+</tbody>
+</table>
+<p>→ <strong>CAD, ZAR, MXN are anchors</strong> (natural core holdings the basket is pinned to); <strong>AUD/NZD/NOK/SEK are adjusters</strong> (where the mean-reversion trade lives).</p>
+<h3>11.2 Half-life of mean reversion</h3>
+<p>Model the error-correction term as an AR(1), <span class="arithmatex">\(z_t = c + \phi z_{t-1} + e_t\)</span>. The <strong>half-life</strong> of a shock:</p>
+<div class="arithmatex">\[
+H = \frac{\ln(0.5)}{\ln\phi}\quad\text{(trading days)}.
+\]</div>
+<p><strong>What we found:</strong> <span class="arithmatex">\(\phi = 0.9789 \Rightarrow H = 32.4\)</span> days. We then <strong>set the walk-forward holding window <span class="arithmatex">\(M=32\)</span> from this half-life</strong> rather than picking it arbitrarily — a derived, not assumed, parameter.</p>
+<p><em>(Identification note: with <span class="arithmatex">\(r&gt;1\)</span>, <span class="arithmatex">\(\beta\)</span> is identified only up to rotation and needs restrictions to interpret; with <span class="arithmatex">\(r=1\)</span> this is moot.)</em></p>
+<hr />
+<h2>12. §10 — From equilibrium error to an allocation</h2>
+<p>The tradeable object is the <strong>standardised error-correction term</strong>:</p>
+<div class="arithmatex">\[
+s_t = \hat\beta' y_t, \qquad z_t = \frac{s_t-\mu}{\sigma},
+\]</div>
+<p>with <span class="arithmatex">\(\mu,\sigma\)</span> estimated <strong>without look-ahead</strong> (train/expanding only). When <span class="arithmatex">\(z_t\)</span> is stretched, the rich legs are overvalued vs the cheap legs, so we <strong>lean against the deviation</strong>:</p>
+<div class="arithmatex">\[
+w_t = -\,z_t\,\hat\beta \,\Big/\, \lVert z_t\hat\beta\rVert_1 .
+\]</div>
+<p>Hold the cheap legs, fund the rich legs, gross-normalised to 1 — the explicit "which to hold, and how much, today" rule.</p>
+<hr />
+<h2>13. §11 — Walk-forward out-of-sample (the headline section)</h2>
+<p><strong>Mechanics — say this slowly, it's the part people misunderstand:</strong></p>
+<p>We are <strong>not</strong> forecasting exchange rates or "predicting cointegration." At each rebalance point <span class="arithmatex">\(t_0\)</span>:
+1. Take the <strong>trailing</strong> window <span class="arithmatex">\([t_0-N,\,t_0)\)</span>, <span class="arithmatex">\(N=504\)</span> days (<span class="arithmatex">\(\approx 2\)</span> yr) — past data only.
+2. Run Johansen. <strong>If <span class="arithmatex">\(r\ge1\)</span>:</strong> fit the VECM, <strong>freeze</strong> <span class="arithmatex">\(\beta,\mu,\sigma\)</span>. <strong>If <span class="arithmatex">\(r=0\)</span>: hold cash</strong> for the next block (encode the instability, don't force a trade).
+3. For the next <span class="arithmatex">\(M=32\)</span> days, trade the frozen signal; the position formed at close <span class="arithmatex">\(t\)</span> earns the <span class="arithmatex">\(t\!\to\!t\!+\!1\)</span> return.
+4. Advance by <span class="arithmatex">\(M\)</span>, <strong>refit</strong>. Stitch all out-of-sample blocks into one continuous, <strong>fully-causal</strong> equity curve.</p>
+<ul>
+<li><strong>Rolling (fixed-<span class="arithmatex">\(N\)</span>)</strong>, not expanding — we <em>want</em> the model to forget pre-regime data; that adaptivity is the right choice for an unstable relationship.</li>
+<li><strong>Leakage discipline:</strong> every quantity used at <span class="arithmatex">\(t\)</span> uses only data <span class="arithmatex">\(\le t\)</span>; an explicit assertion checks train indices precede the traded returns.</li>
+</ul>
+<p><strong>What we found:</strong>
+- Leakage self-check: <strong>PASS</strong>.
+- OOS span 2018-05 → 2026-06 (2,102 days); <strong>in-market only 15% of days</strong> (cash 85%); <strong>15% of refit windows have rank <span class="arithmatex">\(\ge 1\)</span></strong>.
+- <span class="arithmatex">\(\beta\)</span> drifts and the rank flickers between 0 and <span class="arithmatex">\(\ge1\)</span> — <em>that drift is the result</em>: <strong>FX cointegration is regime-dependent, not a fixed structural law.</strong></p>
+<p><strong>§11b — descriptive stability (firewalled from the signal):</strong>
+- <strong>Recursive trace statistic</strong> (expanding window, scaled by its 95% CV): wanders above/below 1, showing the relationship's existence is not constant.
+- <strong>Bai–Perron / PELT break detection</strong> on the ECT (via <code>ruptures</code>) dates the regime shifts. <em>Crucially, full-sample break dates are never fed back into the signal</em> — that would be look-ahead.</p>
+<hr />
+<h2>14. §12 — Out-of-sample statistical evaluation (graded core)</h2>
+<p>The grade is on <strong>statistics</strong>, so we evaluate statistically, not just by the equity curve. The benchmark every FX model must clear is the <strong>random walk</strong> (Meese–Rogoff 1983: exchange-rate changes are close to unforecastable).</p>
+<h3>14.1 Predictive regression (the mean-reversion hypothesis, formally tested)</h3>
+<div class="arithmatex">\[
+\Delta s_{t+1} = a + b\,z_t + u_{t+1}, \qquad \text{Newey–West (HAC) standard errors.}
+\]</div>
+<ul>
+<li><strong><span class="arithmatex">\(H_0\)</span>:</strong> <span class="arithmatex">\(b=0\)</span> (the equilibrium error has no predictive content). <strong><span class="arithmatex">\(H_1\)</span>:</strong> <span class="arithmatex">\(b&lt;0\)</span> (deviations are partly reversed — error correction).</li>
+<li><strong>HAC is mandatory:</strong> autocorrelation + volatility clustering would otherwise overstate the <span class="arithmatex">\(t\)</span>-stat. Newey–West uses <span class="arithmatex">\(\hat\sigma^2_{LR}=\hat\gamma_0+2\sum_{j=1}^{L}(1-\tfrac{j}{L+1})\hat\gamma_j\)</span>.</li>
+</ul>
+<p><strong>What we found:</strong> <span class="arithmatex">\(b=-0.00398\)</span>, <strong>HAC <span class="arithmatex">\(t=-3.47\)</span>, <span class="arithmatex">\(p=0.001\)</span></strong> → <strong>statistically significant mean reversion</strong>.</p>
+<h3>14.2 Diebold–Mariano test vs a random walk</h3>
+<p>Compare one-step forecasts of <span class="arithmatex">\(s_t\)</span> from the error-correction model against the random-walk forecast <span class="arithmatex">\(\hat s_{t+1}=s_t\)</span>. With loss differential <span class="arithmatex">\(d_t = e^{\text{RW}\,2}_t - e^{\text{VECM}\,2}_t\)</span>:</p>
+<div class="arithmatex">\[
+\mathrm{DM} = \frac{\bar d}{\sqrt{\widehat{\operatorname{Var}}(\bar d)}} \;\xrightarrow{d}\; \mathcal N(0,1),
+\quad \widehat{\operatorname{Var}}(\bar d)\ \text{from a HAC long-run variance.}
+\]</div>
+<ul>
+<li><strong><span class="arithmatex">\(H_0\)</span>:</strong> equal forecast accuracy. <strong><span class="arithmatex">\(H_1\)</span>:</strong> the model forecasts better (<span class="arithmatex">\(\mathrm{DM}&gt;0\)</span>).</li>
+<li><strong>What we found:</strong> <span class="arithmatex">\(\mathrm{DM}=1.34\)</span>, <span class="arithmatex">\(p=0.18\)</span> → <strong>cannot reject equal accuracy: the model does not beat the random walk.</strong></li>
+</ul>
+<blockquote>
+<p><strong>The sophisticated punchline to land:</strong> there is <em>statistically significant local mean reversion</em> in the equilibrium error (predictive regression), yet that <strong>does not translate into beating a random walk</strong> (Diebold–Mariano). This is precisely the Meese–Rogoff nuance — predictability <span class="arithmatex">\(\neq\)</span> forecast superiority — and reporting it honestly is exactly what the course rewards.</p>
+</blockquote>
+<hr />
+<h2>15. §13 — Comparative benchmarks (the demonstration)</h2>
+<p>Over the <strong>identical OOS window</strong>, compare the strategy against naïve alternatives: each single-currency buy-and-hold, <strong>USD cash</strong> (the flat "do nothing" line), and an equal-weight basket.</p>
+<p><strong>What we found (price-only log returns):</strong></p>
+<table>
+<thead>
+<tr>
+<th>Strategy</th>
+<th>Total ret</th>
+<th>Ann. vol</th>
+<th>Sharpe</th>
+<th>Max DD</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Cointegration (walk-fwd)</strong></td>
+<td><strong>+0.030</strong></td>
+<td>0.011</td>
+<td><strong>+0.34</strong></td>
+<td><strong>−0.02</strong></td>
+</tr>
+<tr>
+<td>Hold AUD</td>
+<td>−0.070</td>
+<td>0.100</td>
+<td>−0.08</td>
+<td>−0.29</td>
+</tr>
+<tr>
+<td>Hold NZD</td>
+<td>−0.170</td>
+<td>0.098</td>
+<td>−0.21</td>
+<td>−0.30</td>
+</tr>
+<tr>
+<td>Hold CAD</td>
+<td>−0.084</td>
+<td>0.064</td>
+<td>−0.16</td>
+<td>−0.19</td>
+</tr>
+<tr>
+<td>Hold NOK</td>
+<td>−0.156</td>
+<td>0.120</td>
+<td>−0.16</td>
+<td>−0.38</td>
+</tr>
+<tr>
+<td>Hold SEK</td>
+<td>−0.084</td>
+<td>0.103</td>
+<td>−0.10</td>
+<td>−0.33</td>
+</tr>
+<tr>
+<td>Hold ZAR</td>
+<td>−0.276</td>
+<td>0.141</td>
+<td>−0.23</td>
+<td>−0.47</td>
+</tr>
+<tr>
+<td>Hold MXN</td>
+<td>+0.122</td>
+<td>0.120</td>
+<td>+0.12</td>
+<td>−0.32</td>
+</tr>
+<tr>
+<td>USD cash</td>
+<td>0.000</td>
+<td>0.000</td>
+<td>–</td>
+<td>0.00</td>
+</tr>
+<tr>
+<td>Equal-weight basket</td>
+<td>−0.103</td>
+<td>0.086</td>
+<td>−0.14</td>
+<td>−0.25</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Two honesty caveats — state both:</strong>
+1. <strong>Risk profiles differ.</strong> The strategy is <strong>long/short, dollar-neutral</strong> (it strips out USD direction); the buy-and-holds carry full directional USD exposure. Not apples-to-apples — that's the point: it isolates relative value, and by sitting in cash 85% of the time it sidestepped the EM drawdowns.
+2. <strong>Carry is omitted.</strong> Price-only P&amp;L misses rate differentials. Real holders of high-yielders (ZAR, MXN) earn substantial <strong>carry</strong> → the single-currency lines are <strong>understated</strong> (e.g. real MXN returns would be materially higher). We do <strong>not</strong> claim "the strategy beats holding MXN" without that asterisk.</p>
+<hr />
+<h2>16. Headline results — one slide</h2>
+<table>
+<thead>
+<tr>
+<th>Question</th>
+<th>Test(s)</th>
+<th>Verdict</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Integration order</td>
+<td>ADF, KPSS, DF-GLS, PP, Zivot–Andrews</td>
+<td>all seven <strong><span class="arithmatex">\(I(1)\)</span></strong></td>
+</tr>
+<tr>
+<td>Lag / specification</td>
+<td>AIC + portmanteau; HAC drift test</td>
+<td><span class="arithmatex">\(p=2\)</span>; <strong>Case 3</strong> (drift)</td>
+</tr>
+<tr>
+<td>Cointegration (full sample)</td>
+<td>Johansen trace &amp; max-eig, Reinsel–Ahn, <strong>wild bootstrap</strong>, EG, PO</td>
+<td><strong>rank 0</strong> — no stable cointegration</td>
+</tr>
+<tr>
+<td>Is it just the dollar?</td>
+<td><span class="arithmatex">\(\beta\)</span>-restriction LR (<span class="arithmatex">\(\chi^2_6\)</span>)</td>
+<td><strong>rejected</strong> — not a pure dollar factor</td>
+</tr>
+<tr>
+<td>Which to hold?</td>
+<td>weak-exogeneity <span class="arithmatex">\(t\)</span>-tests</td>
+<td>anchors <strong>CAD/ZAR/MXN</strong>; adjusters <strong>AUD/NZD/NOK/SEK</strong></td>
+</tr>
+<tr>
+<td>Reversion speed</td>
+<td>AR(1) half-life</td>
+<td><strong>32 days</strong></td>
+</tr>
+<tr>
+<td>Is it stable over time?</td>
+<td>rolling Johansen, recursive trace, Bai–Perron</td>
+<td><strong>regime-dependent</strong> — coint. in only <strong>15%</strong> of windows</td>
+</tr>
+<tr>
+<td>Local predictability?</td>
+<td>predictive regression (HAC)</td>
+<td><strong>yes</strong>, <span class="arithmatex">\(b&lt;0\)</span>, <span class="arithmatex">\(t=-3.5\)</span></td>
+</tr>
+<tr>
+<td>Beats a random walk?</td>
+<td>Diebold–Mariano</td>
+<td><strong>no</strong> (<span class="arithmatex">\(p=0.18\)</span>) — Meese–Rogoff holds</td>
+</tr>
+</tbody>
+</table>
+<p><strong>The story in one line:</strong> <em>a fully-diagnosed pipeline showing that cointegration in this FX basket is real but fragile and regime-dependent, with mean reversion that is statistically significant yet not forecast-superior to a random walk.</em></p>
+<hr />
+<h2>17. Anticipated questions (and crisp answers)</h2>
+<ul>
+<li><strong>"Isn't using the whole sample look-ahead bias?"</strong> Only for <em>predictive</em> claims. §2–§9 are <em>descriptive</em> in-sample inference (no forecast); all <em>predictive</em> work (§11–§13) is strictly causal with a leakage assertion.</li>
+<li><strong>"Your whiteness test failed — isn't the model invalid?"</strong> At daily frequency strict whiteness is unattainable (ARCH dominates the portmanteau). That's <em>why</em> we use a heteroskedasticity-robust <strong>wild bootstrap</strong> for rank inference instead of relying on asymptotics.</li>
+<li><strong>"Why ADF <em>and</em> KPSS?"</strong> Opposite nulls → a confirmatory read that guards against ADF's low power.</li>
+<li><strong>"Why is the cointegration ADF different from a normal ADF?"</strong> The residual of an estimated cointegrating regression is biased toward stationarity (coefficients chosen to minimise its variance), so it needs <strong>stricter, <span class="arithmatex">\(N\)</span>-dependent</strong> Engle–Granger/Phillips–Ouliaris critical values — <em>not</em> standard DF values.</li>
+<li><strong>"Rank is 0 — isn't the project a failure?"</strong> No. The negative result is <em>established by convergent robust tests</em>, and the walk-forward shows the relationship genuinely flickers in and out. Honest characterisation of an unstable relationship is the deliverable.</li>
+<li><strong>"Why trace <em>and</em> max-eigenvalue?"</strong> They test different hypotheses (<span class="arithmatex">\(\le r\)</span> vs <span class="arithmatex">\(=r\)</span>) and can disagree; reporting both and reconciling is the rigorous standard.</li>
+<li><strong>"Why rolling, not expanding, windows?"</strong> We <em>want</em> the model to forget pre-regime data; adaptivity suits an unstable relationship.</li>
+<li><strong>"How does VECM answer <em>which to hold</em>?"</strong> Two ways: structurally via weak exogeneity (anchors vs adjusters) and dynamically via the error-correction signal (lean against <span class="arithmatex">\(z_t\)</span>).</li>
+</ul>
+<hr />
+<h2>18. Mini-glossary</h2>
+<ul>
+<li><strong><span class="arithmatex">\(I(d)\)</span></strong> — integrated of order <span class="arithmatex">\(d\)</span>; needs <span class="arithmatex">\(d\)</span> differences to be stationary.</li>
+<li><strong>Cointegration</strong> — a stationary linear combination <span class="arithmatex">\(\beta'y_t\)</span> of non-stationary series; a long-run equilibrium.</li>
+<li><strong>Rank <span class="arithmatex">\(r\)</span></strong> — number of independent cointegrating relations <span class="arithmatex">\(=\operatorname{rank}(\Pi)\)</span>.</li>
+<li><strong><span class="arithmatex">\(\beta\)</span></strong> — cointegrating vectors (equilibria). <strong><span class="arithmatex">\(\alpha\)</span></strong> — adjustment speeds (loadings).</li>
+<li><strong>Error-correction term (ECT)</strong> — <span class="arithmatex">\(z_t=\beta'y_t\)</span>, the disequilibrium; mean-reverting if cointegrated.</li>
+<li><strong>Weak exogeneity</strong> — <span class="arithmatex">\(\alpha_j=0\)</span>: currency <span class="arithmatex">\(j\)</span> drives but does not adjust (an anchor).</li>
+<li><strong>Half-life</strong> — <span class="arithmatex">\(\ln 0.5/\ln\phi\)</span>; time for a deviation to halve.</li>
+<li><strong>HAC / Newey–West</strong> — heteroskedasticity- and autocorrelation-consistent standard errors.</li>
+<li><strong>Wild bootstrap</strong> — resampling with random sign flips that preserves volatility clustering.</li>
+<li><strong>Meese–Rogoff</strong> — the result that structural FX models struggle to beat a random walk OOS.</li>
+</ul>
+<hr />
+<p><em>Reproduce everything: <code>uv run --with nbformat python src/build_notebook.py</code> regenerates the notebook; run it on the project <code>.venv</code> from the <code>multivariate_project/</code> directory.</em></p>
+</body>
+</html>
